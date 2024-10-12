@@ -8,9 +8,12 @@ LOGFILE="$WORKDIR/deployment.log"
 
 LAYER="all"  # cloud / edge / all
 MODEL="ppo"  # dqn / ppo 
-PATTERN="aggregator-parallel"  # Used by redeploy.sh
+PATTERN="aggregator-sequential"  # Used by redeploy.sh
 MUBENCH_CONFIG_PATH="Configs/K8sParameters.json"  # Used by redeploy.sh
-
+OUTPUT_DIR="$WORKDIR/results"
+TAG="verified2"
+mkdir -p $OUTPUT_DIR/$TAG
+TARGET_OUTPUT_DIR="$OUTPUT_DIR/$TAG"
 # Clean up function to run on exit
 cleanup() {
     echo "[$(date)] Cleaning up resources..." | tee -a $LOGFILE
@@ -44,7 +47,6 @@ cd $AGENT_WORKDIR && python server.py --modelname $MODEL --pattern $PATTERN  2>&
 SERVER_PID=$!  # 保存服务器的进程ID
 echo "[$(date)] Server started with PID: $SERVER_PID" | tee -a $LOGFILE
 
-
 # Define replica counts
 REPLICA_CNTS=(5 3 1)
 # Loop over replica counts
@@ -67,13 +69,13 @@ do
 
         # Start the tests
         echo "[$(date)] Starting tests for replica count $replica, test $i..." | tee -a $LOGFILE
-        python Benchmarks/Runner/Runner.py -c tmp/runner_parameters.json >> $WORKDIR/runner.log 2>&1 &
+        python Benchmarks/Runner/Runner.py -c tmp/runner_parameters.json >> $TARGET_OUTPUT_DIR/RL_Runner.log 2>&1 &
         TESTER_PID=$!  # 保存测试进程的ID
         
         # Run the migrator
         cd $MIGRATOR_WORKDIR
         echo "[$(date)] Running migrator for replica count $replica, test $i..." | tee -a $LOGFILE
-        go run . -v 1 --test --replicaCnt=$replica --strategy=rl --output=$WORKDIR/${MODEL}_${PATTERN}_replica${replica}.csv >> $WORKDIR/migrator.log 2>&1
+        go run . -v 1 --test --replicaCnt=$replica --strategy=rl --output=$TARGET_OUTPUT_DIR/${TAG}_${MODEL}_${PATTERN}_replica${replica}.csv >> $TARGET_OUTPUT_DIR/RL_Migrator.log 2>&1
 
         # Kill the test process
         echo "[$(date)] Killing test process with PID: $TESTER_PID" | tee -a $LOGFILE
