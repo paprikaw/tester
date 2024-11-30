@@ -5,10 +5,10 @@ MUBENCH_WORKDIR="/home/ubuntu/muBench"
 MIGRATOR_WORKDIR="/home/ubuntu/pod-migrator"
 AGENT_WORKDIR="/home/ubuntu/edge-cloud-env"
 MUBENCH_CONFIG_PATH="Configs/K8sParameters.json"  # Used by redeploy.sh
-LAYER=("chain")  # cloud / edge / all
+LAYER=("all" "cloud" "edge")  # cloud / edge / all
 WORKMODEL=("aggregator_parallel" "aggregator_sequential" "chain")  # Used by redeploy.sh
-OUTPUT_DIR="$WORKDIR/results"
-TAG="complete"
+OUTPUT_DIR="$WORKDIR/results/tests"
+TAG="distribution"
 TARGET_OUTPUT_DIR="$OUTPUT_DIR/$TAG/be"
 LOGFILE="$TARGET_OUTPUT_DIR/deployment.log"
 mkdir -p $TARGET_OUTPUT_DIR
@@ -34,7 +34,7 @@ cleanup() {
 # Set up trap to catch SIGINT (Ctrl+C) and call cleanup
 trap cleanup SIGINT
 # Define replica counts
-REPLICA_CNTS=(1 3 5)
+REPLICA_CNTS=(1 2 3 4 5)
 for iteration in {1..6}
 do
     echo "[$(date)] Iteration $iteration..." | tee -a $LOGFILE
@@ -51,7 +51,6 @@ do
                 cd $MUBENCH_WORKDIR
                 echo "[$(date)] Generating configuration for replica count $replica..." | tee -a $LOGFILE
                 python configGenerator.py --workmodel $workmodel --replicaCnt $replica --layer $layer
-                python configGenerator.py --workmodel chain --replicaCnt 5 --layer cloud 
 
                 # Run tests for each replica count
                 for i in {1..5}
@@ -63,17 +62,10 @@ do
                     kubectl delete -f yamls/
                     rm -rf yamls/*
                     python Deployers/K8sDeployer/RunK8sDeployer.py -c ./tmp/k8s_parameters.json
-
+                    
                     # Start the tests
-                    echo "[$(date)] Starting tests for pattern $workmodel layer $layer replica count $replica, test $i..." | tee -a $LOGFILE
-                    sleep 5 
-                    # Tester has internal 10 seconds delay for running the test
-                    setsid python Benchmarks/Runner/Runner.py -c tmp/runner_parameters.json >> $TARGET_OUTPUT_DIR/Runner.log 2>&1 &
-                    TESTER_PID=$!  # 保存测试进程的ID
-                    # Run the migrator
                     cd $MIGRATOR_WORKDIR
-                    echo "[$(date)] Collecting latency data $replica, test $i..." | tee -a $LOGFILE
-                    setsid go run . -v 1 --mode=test --replicaCnt=$replica --strategy=be --output=$TARGET_OUTPUT_DIR/${workmodel}_${layer}_replica${replica}.csv >> $TARGET_OUTPUT_DIR/Migrator.log 2>&1
+                    setsid go run . -v 2 -mode=pod_distribution --strategy=be --output=$TARGET_OUTPUT_DIR/${workmodel}_${layer}_replica${replica}.csv >> $TARGET_OUTPUT_DIR/Migrator.log 2>&1
 
                     # Kill the test process
                     echo "[$(date)] Killing test process with PID: $TESTER_PID" | tee -a $LOGFILE
@@ -81,7 +73,6 @@ do
 
                     echo "[$(date)] Test $i with replica count $replica completed." | tee -a $LOGFILE
                 done
-
                 echo "[$(date)] Finished processing replica count: $replica" | tee -a $LOGFILE
             done
         done

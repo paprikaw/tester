@@ -8,10 +8,10 @@ LOGFILE="$WORKDIR/deployment.log"
 
 LAYER="all"  # cloud / edge / all
 MODEL=("ppo" "dqn")  # dqn / ppo
-PATTERN=("chain")  # Used by redeploy.sh
+PATTERN=("aggregator_sequential")  # Used by redeploy.sh
 MUBENCH_CONFIG_PATH="Configs/K8sParameters.json"  # Used by redeploy.sh
 OUTPUT_DIR="$WORKDIR/results"
-TAG="complete"
+TAG="distribution"
 mkdir -p $OUTPUT_DIR/$TAG/rl
 TARGET_OUTPUT_DIR="$OUTPUT_DIR/$TAG/rl"
 # Clean up function to run on exit
@@ -41,7 +41,7 @@ echo "[$(date)] Starting to uncordon nodes..." | tee -a $LOGFILE
 cd $MIGRATOR_WORKDIR && ./uncordon.sh
 
 # Define replica counts
-REPLICA_CNTS=(5 3 1)
+REPLICA_CNTS=(5)
 # Loop over replica counts
 for iter in {1..6}
 do
@@ -49,10 +49,9 @@ do
     for model in "${MODEL[@]}"
     do
         for pattern in "${PATTERN[@]}"
-        do
-            echo "[$(date)] Starting the server with model: $model, pattern: $pattern in the background..." | tee -a $LOGFILE
+        do            
             cd $AGENT_WORKDIR
-            setsid python server.py --modelname $model --pattern $pattern --tag $TAG >> $TARGET_OUTPUT_DIR/RL_Server.log  2>&1 &
+            setsid python server.py --modelname $model --pattern $pattern --tag complete >> $TARGET_OUTPUT_DIR/RL_Server.log  2>&1 &
             SERVER_PID=$!  # 保存服务器的进程ID
             echo "[$(date)] Server started with PID: $SERVER_PID" | tee -a $LOGFILE
             for replica in "${REPLICA_CNTS[@]}"
@@ -73,13 +72,9 @@ do
                     sleep 5
                     # Start the tests
                     echo "[$(date)] Starting tests for replica count $replica, test $i..." | tee -a $LOGFILE
-                    setsid python Benchmarks/Runner/Runner.py -c tmp/runner_parameters.json >> $TARGET_OUTPUT_DIR/RL_Runner.log 2>&1 &
-                    TESTER_PID=$!  # 保存测试进程的ID
-                    # Run the migrator
                     cd $MIGRATOR_WORKDIR
                     echo "[$(date)] Running migrator for replica count $replica, test $i, model: $model, pattern: $pattern..." | tee -a $LOGFILE
-                    go run . -v 2 --mode=test --replicaCnt=$replica --strategy=rl --output=$TARGET_OUTPUT_DIR/${pattern}_${model}_replica${replica}.csv >> $TARGET_OUTPUT_DIR/RL_Migrator.log 2>&1
-
+                    go run . -v 2 --mode=pod_distribution --strategy=rl --output=$TARGET_OUTPUT_DIR/${pattern}_${model}_replica${replica}.csv >> $TARGET_OUTPUT_DIR/RL_Migrator.log 2>&1
 
                     # Kill the test process
                     echo "[$(date)] Killing test process with PID: $TESTER_PID" | tee -a $LOGFILE
