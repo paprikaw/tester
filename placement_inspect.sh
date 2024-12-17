@@ -44,10 +44,6 @@ kubectl delete -f yamls/
 rm -rf yamls/*
 python Deployers/K8sDeployer/RunK8sDeployer.py -c ./tmp/k8s_parameters.json
 sleep 5
-# Start the tests
-echo "[$(date)] Starting tests for replica count $replica, test $i..." | tee -a $LOGFILE
-setsid python Benchmarks/Runner/Runner.py -c tmp/runner_parameters.json >> $TARGET_OUTPUT_DIR/RL_Runner.log 2>&1 &
-TESTER_PID=$!  # 保存测试进程的ID
 # Run the migrator
 cd $MIGRATOR_WORKDIR
 echo "[$(date)] Running migrator for replica count $replica, test $i, model: $model, pattern: $pattern..." | tee -a $LOGFILE
